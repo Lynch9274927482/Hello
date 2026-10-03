@@ -10,12 +10,10 @@
   html,body{margin:0;height:100%;overflow:hidden;background:#dfe8f5;
     font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;color:var(--ink)}
   canvas{display:block;touch-action:none;outline:none}
-  .panel,#hint{background:var(--glass);border:1px solid var(--edge);
+  .panel{background:var(--glass);border:1px solid var(--edge);
     -webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);
     box-shadow:0 12px 40px rgba(30,60,110,.18)}
   .panel{position:fixed;top:16px;right:16px;width:300px;padding:18px;border-radius:22px}
-  #hint{position:fixed;top:16px;left:16px;padding:9px 14px;border-radius:14px;font-size:13px;font-weight:600;
-    pointer-events:none;max-width:calc(100% - 32px)}
   h1{font-size:17px;margin:0 0 2px;font-weight:700;letter-spacing:-.01em}
   .sub{font-size:12.5px;color:var(--muted);margin:0 0 14px}
   .row{margin-bottom:13px}
@@ -35,7 +33,6 @@
   button:focus-visible{outline:3px solid rgba(10,86,255,.4);outline-offset:2px}
   #lockBtn{background:var(--accent);color:#fff}
   #lockBtn[aria-pressed=true]{background:#14a35c}
-  #resetBtn{background:rgba(255,255,255,.8);color:var(--ink);border:1px solid rgba(40,70,120,.2)}
   .stat{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.45}
   .stat b{color:var(--ink)}
   @media (max-width:640px){
@@ -49,13 +46,11 @@
 </style>
 </head>
 <body>
-<div id="hint">Tap Lock in to freeze the camera, then use the crank</div>
 <div class="panel" role="group" aria-label="Simulation controls">
   <h1>Ramp &amp; crank pulley</h1>
   <p class="sub">Lock in the camera, then turn the handle counter-clockwise to haul the car up the ramp.</p>
   <div class="btns">
     <button id="lockBtn" aria-pressed="false">Lock in</button>
-    <button id="resetBtn">Reset</button>
   </div>
   <div class="stat" id="stat"></div>
 </div>
@@ -80,7 +75,7 @@
 
   // ---------- state ----------
   let angle = DEFAULT_ANGLE * Math.PI / 180;
-  let frac = 0, thetaMax = 1, on0 = 0, Cy = 0, dirty = true, dragging = false, locked = false;
+  let theta = 0, omega = 0, target = 0, thetaMax = 1, on0 = 0, Cy = 0, dirty = true, dragging = false, locked = false;
 
   // ---------- renderer / scene ----------
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -117,7 +112,7 @@
     if (!locked || !overCrank(e)) return;
     const a = pointerAngle(e); if (a === null) return;
     e.stopImmediatePropagation();
-    dragging = true; prevA = a; dirty = true;
+    dragging = true; prevA = a; target = theta; dirty = true;
     dom.setPointerCapture(e.pointerId); dom.style.cursor = 'grabbing';
   });
   dom.addEventListener('pointermove', e => {
@@ -126,8 +121,7 @@
       let d = a - prevA;
       if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI;
       prevA = a;
-      frac = Math.min(1, Math.max(0, frac + d / thetaMax));
-      dirty = true;
+      target += d;                    // where the hand is trying to take the handle
     } else if (locked && e.pointerType === 'mouse') {
       dom.style.cursor = overCrank(e) ? 'grab' : 'default';
     }
@@ -306,7 +300,6 @@
   }
 
   function update() {
-    const theta = frac * thetaMax;
     const t = solveTravel(theta), g = ropeGeom(t);
     car.position.set(g.px, g.py, 0);
     car.rotation.z = angle;
@@ -331,28 +324,23 @@
     scene.add(ropeMesh);
     knot.position.copy(end);
 
-    statEl.innerHTML = 'Ideal mechanical advantage of the slope: <b>' + (1 / Math.sin(angle)).toFixed(2) + '×</b><br>' +
+    statEl.innerHTML = 'Car weight: <b>5 kg</b> &nbsp; Rope tension at rest: <b>' + (5 * 9.81 * Math.sin(angle)).toFixed(1) + ' N</b><br>' +
       'Crank turns: <b>' + (theta / (2 * Math.PI)).toFixed(2) + '</b> &nbsp; Car raised: <b>' + (t * Math.sin(angle)).toFixed(2) + '</b>';
   }
 
   // ---------- UI ----------
   const $ = id => document.getElementById(id);
-  const lockBtn = $('lockBtn'), resetBtn = $('resetBtn'), statEl = $('stat'), hint = $('hint');
+  const lockBtn = $('lockBtn'), statEl = $('stat');
 
   function setLocked(v) {
     locked = v;
     controls.enabled = !v;               // camera frozen while locked in
-    if (v) { dragging = false; }
+    if (v) dragging = false;
     lockBtn.setAttribute('aria-pressed', v);
     lockBtn.textContent = v ? 'Locked in – tap to unlock' : 'Lock in';
-    hint.textContent = v ? 'Camera locked – drag the handle in a circle' : 'Tap Lock in to freeze the camera, then use the crank';
     dom.style.cursor = 'default';
   }
   lockBtn.addEventListener('click', () => setLocked(!locked));
-  resetBtn.addEventListener('click', () => {
-    frac = 0; setLocked(false);
-    buildRamp(); recompute(); defaultCam(); dirty = true;
-  });
   addEventListener('resize', () => {
     renderer.setSize(innerWidth, innerHeight);
     camera.aspect = innerWidth / innerHeight;
@@ -360,9 +348,40 @@
   });
 
   // ---------- loop ----------
+  // ---------- physics ----------
+  // The car (5 kg) pulls back on the crank through the rope. Your hand can only push so hard,
+  // so the handle lags behind the pointer; let go and gravity unwinds the rope.
+  const M_CAR = 1, G = 3.0;            // scaled units: slow, readable motion
+  const I_CRANK = 0.05, C_VISC = 0.3;  // light cardboard crank, a little friction
+  const KP = 20, KD = 3.5, TAU_MAX = 1.5, LAG = 1.0;
+  const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+  function gearRatio(th) {             // car travel per radian of crank rotation
+    const a = Math.max(th - 0.01, 0), b = Math.min(th + 0.01, thetaMax);
+    return (solveTravel(b) - solveTravel(a)) / (b - a);
+  }
+  function step(dt) {
+    const n = 4, h = dt / n;
+    for (let i = 0; i < n; i++) {
+      const k = gearRatio(theta);
+      const Ieff = I_CRANK + M_CAR * k * k;
+      let tau = -M_CAR * G * Math.sin(angle) * k - C_VISC * omega;
+      if (dragging) {
+        target = clamp(target, theta - LAG, theta + LAG);
+        tau += clamp(KP * (target - theta) - KD * omega, -TAU_MAX, TAU_MAX);
+      }
+      omega += tau / Ieff * h;
+      theta += omega * h;
+      if (theta < 0) { theta = 0; omega = 0; }                       // car rests at the bottom
+      if (theta > thetaMax) { theta = thetaMax; omega = Math.min(omega, 0); }
+    }
+  }
+
+  const clock = new THREE.Clock();
   function loop() {
     requestAnimationFrame(loop);
-    if (dirty) { update(); dirty = false; }
+    const before = theta;
+    step(Math.min(clock.getDelta(), 0.05));
+    if (theta !== before || dirty) { update(); dirty = false; }
     controls.update();
     renderer.render(scene, camera);
   }
