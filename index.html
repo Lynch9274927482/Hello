@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inclined &amp; Declined Plane Lab</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<aside class="panel" id="settings">
+  <details open>
+    <summary>Plane lab settings</summary>
+    <label>Incline angle <b id="aV">25°</b><input id="a" type="range" min="10" max="40" value="25"></label>
+    <label>Decline angle <b id="bV">40°</b><input id="b" type="range" min="15" max="55" value="40"></label>
+    <label>Crate weight <b id="mV">2 kg</b><input id="m" type="range" min="0.5" max="5" step="0.5" value="2"></label>
+    <label>Car motor power <b id="fV">18 N</b><input id="f" type="range" min="0" max="30" value="18"></label>
+    <div class="row">
+      <button id="rope" class="chip on">Rope: attached</button>
+      <button id="reset" class="chip">Reset</button>
+    </div>
+  </details>
+</aside>
+
+<aside class="panel hud">
+  <div id="state" class="state">At rest</div>
+  <dl>
+    <dt>Speed</dt><dd id="vel">0.00 m/s</dd>
+    <dt>Acceleration</dt><dd id="acc">0.00 m/s²</dd>
+    <dt>Car momentum</dt><dd id="mom">0.00 kg·m/s</dd>
+    <dt>Rope tension</dt><dd id="ten">0.0 N</dd>
+    <dt>Crate height</dt><dd id="hgt">0.00 m</dd>
+    <dt>Force to lift on ramp</dt><dd id="lift">0.0 N</dd>
+  </dl>
+  <p id="note"></p>
+</aside>
+
+<div class="remote" aria-label="Remote control">
+  <div class="remote-label">Hold to drive</div>
+  <div class="buttons">
+    <button id="rev" class="rb rev">◀<span>Reverse</span></button>
+    <button id="brk" class="rb brk">■<span>Brake</span></button>
+    <button id="fwd" class="rb fwd">▶<span>Forward</span></button>
+  </div>
+  <div class="keys">Keys: ← → drive · Space brake · R reset · drag to orbit · scroll to zoom</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
