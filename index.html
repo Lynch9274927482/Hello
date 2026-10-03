@@ -1,62 +1,374 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Inclined &amp; Declined Plane Lab</title>
-<link rel="stylesheet" href="style.css">
+<title>Ramp &amp; Crank Pulley – Simple Machine Simulation</title>
+<style>
+  :root{--ink:#1b2a3a;--muted:#53647a;--accent:#0a56ff;--glass:rgba(255,255,255,.58);--edge:rgba(255,255,255,.75)}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#dfe8f5;
+    font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;color:var(--ink)}
+  canvas{display:block;touch-action:none;outline:none}
+  .panel,#hint{background:var(--glass);border:1px solid var(--edge);
+    -webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);
+    box-shadow:0 12px 40px rgba(30,60,110,.18)}
+  .panel{position:fixed;top:16px;right:16px;width:300px;padding:18px;border-radius:22px}
+  #hint{position:fixed;top:16px;left:16px;padding:9px 14px;border-radius:14px;font-size:13px;font-weight:600;
+    pointer-events:none;max-width:calc(100% - 32px)}
+  h1{font-size:17px;margin:0 0 2px;font-weight:700;letter-spacing:-.01em}
+  .sub{font-size:12.5px;color:var(--muted);margin:0 0 14px}
+  .row{margin-bottom:13px}
+  .lab{display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:6px}
+  .lab output{color:var(--accent);font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:3px;
+    background:rgba(40,70,120,.2);outline:none;margin:6px 0}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;
+    background:#fff;border:3px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#fff;
+    border:3px solid var(--accent);cursor:pointer}
+  input[type=range]:focus-visible{box-shadow:0 0 0 3px rgba(10,86,255,.35)}
+  .btns{display:flex;gap:10px}
+  button{flex:1;font:inherit;font-size:14px;font-weight:700;padding:12px 0;border-radius:14px;border:0;cursor:pointer;
+    transition:transform .12s}
+  button:active{transform:scale(.97)}
+  button:focus-visible{outline:3px solid rgba(10,86,255,.4);outline-offset:2px}
+  #lockBtn{background:var(--accent);color:#fff}
+  #lockBtn[aria-pressed=true]{background:#14a35c}
+  #resetBtn{background:rgba(255,255,255,.8);color:var(--ink);border:1px solid rgba(40,70,120,.2)}
+  .stat{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.45}
+  .stat b{color:var(--ink)}
+  @media (max-width:640px){
+    .panel{top:auto;left:0;right:0;bottom:0;width:auto;border-radius:22px 22px 0 0;
+      padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+    h1{font-size:15px}.sub,.stat{display:none}
+    .row{margin-bottom:6px}.lab{margin-bottom:0}
+    button{padding:10px 0}
+  }
+  @media (prefers-reduced-motion:reduce){button{transition:none}}
+</style>
 </head>
 <body>
-<canvas id="scene"></canvas>
-
-<div class="stack">
-<aside class="panel" id="settings">
-  <details>
-    <summary>Plane lab settings</summary>
-    <label>Incline angle <b id="aV">25°</b><input id="a" type="range" min="10" max="40" value="25"></label>
-    <label>Decline angle <b id="bV">40°</b><input id="b" type="range" min="15" max="55" value="40"></label>
-    <label>Crate weight <b id="mV">2 kg</b><input id="m" type="range" min="0.5" max="5" step="0.5" value="2"></label>
-    <label>Car motor power <b id="fV">18 N</b><input id="f" type="range" min="0" max="30" value="18"></label>
-    <div class="row">
-      <button id="rope" class="chip on">Rope: attached</button>
-      <button id="reset" class="chip">Reset</button>
-    </div>
-  </details>
-</aside>
-
-<aside class="panel hud">
-  <details>
-  <summary>Live readouts</summary>
-  <div id="state" class="state">At rest</div>
-  <dl>
-    <dt>Speed</dt><dd id="vel">0.00 m/s</dd>
-    <dt>Acceleration</dt><dd id="acc">0.00 m/s²</dd>
-    <dt>Car momentum</dt><dd id="mom">0.00 kg·m/s</dd>
-    <dt>Rope tension</dt><dd id="ten">0.0 N</dd>
-    <dt>Crate height</dt><dd id="hgt">0.00 m</dd>
-    <dt>Force to lift on ramp</dt><dd id="lift">0.0 N</dd>
-  </dl>
-  <p id="note"></p>
-  </details>
-</aside>
-</div>
-
-<div class="zoom" aria-label="Zoom">
-  <button id="zin" aria-label="Zoom in">+</button>
-  <button id="zout" aria-label="Zoom out">−</button>
-</div>
-
-<div class="remote" aria-label="Remote control">
-  <div class="remote-label">Hold to drive</div>
-  <div class="buttons">
-    <button id="rev" class="rb rev">◀<span>Reverse</span></button>
-    <button id="brk" class="rb brk">■<span>Brake</span></button>
-    <button id="fwd" class="rb fwd">▶<span>Forward</span></button>
+<div id="hint">Tap Lock in to freeze the camera, then use the crank</div>
+<div class="panel" role="group" aria-label="Simulation controls">
+  <h1>Ramp &amp; crank pulley</h1>
+  <p class="sub">Lock in the camera, then turn the handle counter-clockwise to haul the car up the ramp.</p>
+  <div class="btns">
+    <button id="lockBtn" aria-pressed="false">Lock in</button>
+    <button id="resetBtn">Reset</button>
   </div>
-  <div class="keys">Keys: ← → drive · Space brake · R reset · drag to orbit · scroll to zoom</div>
+  <div class="stat" id="stat"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="script.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+  // ---------- constants ----------
+  const S = 7, WD = 2.2;              // slope length, ramp width
+  const R = 0.45, RR = 0.485;         // top wheel radius, rope track radius
+  const CX = -0.1;                    // top wheel x
+  const S0 = 6.0, S_MIN = 1.6;        // car start / nearest approach (distance from apex along slope)
+  const CAR_WHEEL = 0.2;
+  const DEFAULT_ANGLE = 30;
+  // crank winch (fixed near the bottom of the ramp's tall end)
+  const RS = 0.4;                     // spool rope radius
+  const XR = CX + RR;                 // x of the vertical rope run
+  const XC = XR + RS, YC = 1.0;       // crank centre
+  const HZ = 1.05;                    // z of handle knob (drag plane)
+  const ALPHA0 = 1.2;                 // rope already wrapped on spool at start (rad)
+
+  // ---------- state ----------
+  let angle = DEFAULT_ANGLE * Math.PI / 180;
+  let frac = 0, thetaMax = 1, on0 = 0, Cy = 0, dirty = true, dragging = false, locked = false;
+
+  // ---------- renderer / scene ----------
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const dom = renderer.domElement;
+  document.body.prepend(dom);
+
+  const BG = 0xdfe8f5;
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(BG);
+  scene.fog = new THREE.Fog(BG, 28, 80);
+
+  const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 200);
+  const TARGET = new THREE.Vector3(-1.2, 2.0, 0.2);
+
+  // Crank dragging is registered BEFORE OrbitControls so it can claim the pointer first.
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), hitP = new THREE.Vector3();
+  const dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -HZ);
+  let prevA = 0;
+  function setRay(e) {
+    const r = dom.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+  }
+  const overCrank = e => { setRay(e); return ray.intersectObject(crank, true).length > 0; };
+  function pointerAngle(e) {
+    setRay(e);
+    return ray.ray.intersectPlane(dragPlane, hitP) ? Math.atan2(hitP.y - YC, hitP.x - XC) : null;
+  }
+  dom.addEventListener('pointerdown', e => {
+    if (!locked || !overCrank(e)) return;
+    const a = pointerAngle(e); if (a === null) return;
+    e.stopImmediatePropagation();
+    dragging = true; prevA = a; dirty = true;
+    dom.setPointerCapture(e.pointerId); dom.style.cursor = 'grabbing';
+  });
+  dom.addEventListener('pointermove', e => {
+    if (dragging) {
+      const a = pointerAngle(e); if (a === null) return;
+      let d = a - prevA;
+      if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI;
+      prevA = a;
+      frac = Math.min(1, Math.max(0, frac + d / thetaMax));
+      dirty = true;
+    } else if (locked && e.pointerType === 'mouse') {
+      dom.style.cursor = overCrank(e) ? 'grab' : 'default';
+    }
+  });
+  const endDrag = () => { dragging = false; dom.style.cursor = 'default'; };
+  dom.addEventListener('pointerup', endDrag);
+  dom.addEventListener('pointercancel', endDrag);
+
+  const controls = new THREE.OrbitControls(camera, dom);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.minDistance = 3;
+  controls.maxDistance = 25;
+  controls.maxPolarAngle = Math.PI / 2 - 0.05;
+  function defaultCam() {
+    const portrait = innerWidth / innerHeight < 1;
+    camera.position.set(...(portrait ? [6, 7, 19] : [5, 6, 13]));
+    controls.target.copy(TARGET);
+    controls.update();
+  }
+
+  // lights
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xaab8cc, 0.7));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+  sun.position.set(8, 14, 7);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 40 });
+  sun.shadow.bias = -0.0005;
+  scene.add(sun);
+
+  // ground + grid (fades into fog)
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(200, 64).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0xeef2f8, roughness: 1 }));
+  ground.receiveShadow = true;
+  scene.add(ground);
+  const grid = new THREE.GridHelper(200, 200, 0x9aa8bd, 0xc3cddc);
+  grid.position.y = 0.002;
+  grid.material.transparent = true; grid.material.opacity = 0.7;
+  scene.add(grid);
+
+  // ---------- materials ----------
+  const M = (color, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: .55, metalness: .05 }, o));
+  const mRamp = M(0xf2b544, { roughness: .8 });
+  const mDark = M(0x23303f, { roughness: .6 });
+  const mMetal = M(0x6d7b8f, { roughness: .35, metalness: .75 });
+  const mRope = M(0x6b4a2b, { roughness: .9 });
+  const mBlue = M(0x0a56ff, { roughness: .35 });
+  const mGlass = M(0xbfe3ff, { roughness: .1, metalness: .2 });
+  const mCard = M(0xb98650, { roughness: 1, metalness: 0 });        // cardboard
+  const mCardDark = M(0x9a6c3a, { roughness: 1, metalness: 0 });
+  const mCardLight = M(0xcaa06a, { roughness: 1, metalness: 0 });
+  const mWood = M(0xe9cf9a, { roughness: .85, metalness: 0 });      // toothpick
+
+  // toothpick: pointed-both-ends stick between two points
+  const tpGeo = new THREE.LatheGeometry([[0, -.5], [1, -.43], [1, .43], [0, .5]].map(p => new THREE.Vector2(p[0], p[1])), 8);
+  const UP = new THREE.Vector3(0, 1, 0);
+  function toothpick(a, b, r = 0.03) {
+    const m = new THREE.Mesh(tpGeo, mWood);
+    const d = new THREE.Vector3().subVectors(b, a), len = d.length();
+    m.scale.set(r, len, r);
+    m.position.copy(a).add(b).multiplyScalar(.5);
+    m.quaternion.setFromUnitVectors(UP, d.normalize());
+    m.castShadow = true;
+    return m;
+  }
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const cyl = (r, len, mat) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 36).rotateX(Math.PI / 2), mat);
+
+  // ---------- ramp (rebuilt on angle change) ----------
+  const rampGroup = new THREE.Group();
+  scene.add(rampGroup);
+  function buildRamp() {
+    rampGroup.children.slice().forEach(c => { c.geometry.dispose(); rampGroup.remove(c); });
+    const b = S * Math.cos(angle), h = S * Math.sin(angle);
+    const shape = new THREE.Shape();
+    shape.moveTo(-b, 0); shape.lineTo(0, 0); shape.lineTo(0, h); shape.closePath();
+    const g = new THREE.ExtrudeGeometry(shape, { depth: WD, bevelEnabled: false });
+    g.translate(0, 0, -WD / 2);
+    const mesh = new THREE.Mesh(g, mRamp);
+    mesh.castShadow = mesh.receiveShadow = true;
+    rampGroup.add(mesh, new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: 0x9c6b12 })));
+  }
+
+  // ---------- top wheel & axle (cardboard on toothpicks) ----------
+  const tower = new THREE.Group();     // toothpicks, rebuilt on angle change
+  scene.add(tower);
+  const wheel = new THREE.Group();
+  wheel.add(cyl(R, 0.1, mCardDark));
+  [-0.056, 0.056].forEach(z => { const f = cyl(R - 0.04, 0.012, mCardLight); f.position.z = z; wheel.add(f); });
+  [-0.075, 0.075].forEach(z => { const f = cyl(R + 0.07, 0.02, mCard); f.position.z = z; wheel.add(f); });
+  for (let i = 0; i < 3; i++) {       // cut-out look: lighter cardboard strips
+    const s = new THREE.Mesh(new THREE.BoxGeometry(R * 1.5, 0.06, 0.016), mCardLight);
+    s.position.z = 0.064; s.rotation.z = i * Math.PI / 3; wheel.add(s);
+  }
+  wheel.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(wheel);
+
+  // ---------- crank winch (fixed, near ramp base) ----------
+  const frame = new THREE.Group();     // toothpick A-frames
+  scene.add(frame);
+  [-0.3, -0.8].forEach(z => {
+    frame.add(toothpick(V(XC, YC, z), V(XC - 0.6, 0.03, z)));
+    frame.add(toothpick(V(XC, YC, z), V(XC + 0.6, 0.03, z)));
+    frame.add(toothpick(V(XC - 0.33, 0.5, z), V(XC + 0.33, 0.5, z), 0.025));
+  });
+  frame.add(toothpick(V(XC - 0.6, 0.03, -0.3), V(XC - 0.6, 0.03, -0.8), 0.025));
+  frame.add(toothpick(V(XC + 0.6, 0.03, -0.3), V(XC + 0.6, 0.03, -0.8), 0.025));
+  frame.add(toothpick(V(XC, YC, -0.88), V(XC, YC, 0.28), 0.04));     // axle
+
+  const crank = new THREE.Group();
+  crank.position.set(XC, YC, 0);
+  crank.add(cyl(RS - 0.03, 0.2, mCardDark));
+  [-0.105, 0.105].forEach(z => { const f = cyl(0.62, 0.04, mCard); f.position.z = z; crank.add(f); });
+  [-0.13, 0.13].forEach(z => { const f = cyl(0.5, 0.012, mCardLight); f.position.z = z; crank.add(f); });
+  const ha = Math.PI * 0.35, hx = 0.5 * Math.cos(ha), hy = 0.5 * Math.sin(ha);
+  const stick = cyl(0.04, HZ - 0.13, mWood); stick.position.set(hx, hy, (HZ + 0.13) / 2);
+  const base = cyl(0.09, 0.05, mCardDark); base.position.set(hx, hy, 0.15);
+  const knob = cyl(0.12, 0.2, mCardDark); knob.position.set(hx, hy, HZ);
+  const hit = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 12), new THREE.MeshBasicMaterial({ visible: false }));
+  hit.position.set(hx, hy, HZ);
+  crank.add(stick, base, knob, hit);
+  crank.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  scene.add(crank);
+
+  // ---------- car ----------
+  const car = new THREE.Group();
+  scene.add(car);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.32, 0.8), mBlue); body.position.y = 0.38;
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.28, 0.68), mBlue); cabin.position.set(-0.12, 0.68, 0);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.17, 0.67), mGlass); glass.position.set(-0.12, 0.7, 0);
+  const bumper = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.84), mDark); bumper.position.set(0.66, 0.3, 0);
+  const hook = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 12), mMetal); hook.position.set(0.65, 0.4, 0);
+  car.add(body, cabin, glass, bumper, hook);
+  const carWheels = [[-0.4, -0.43], [-0.4, 0.43], [0.4, -0.43], [0.4, 0.43]].map(([x, z]) => {
+    const w = cyl(CAR_WHEEL, 0.14, mDark); w.position.set(x, CAR_WHEEL, z);
+    const cap = cyl(0.08, 0.16, mMetal); w.add(cap); car.add(w); return w;
+  });
+  car.traverse(o => { if (o.isMesh) o.castShadow = true; });
+
+  // ---------- rope ----------
+  let ropeMesh = null;
+  const knot = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 10), mRope);
+  scene.add(knot);
+
+  // ---------- maths ----------
+  function ropeGeom(t) {
+    const s = S0 - t, h = S * Math.sin(angle);
+    const ux = Math.cos(angle), uy = Math.sin(angle), nx = -uy, ny = ux;
+    const px = -s * ux, py = h - s * uy;
+    const Qx = px + 0.65 * ux + 0.4 * nx, Qy = py + 0.65 * uy + 0.4 * ny;       // car hook
+    const dx = CX - Qx, dy = Cy - Qy, L = Math.hypot(dx, dy);
+    const phi = Math.atan2(dy, dx) + Math.asin(Math.min(RR / L, 1));
+    const len = Math.sqrt(Math.max(L * L - RR * RR, 0));
+    const Tx = Qx + len * Math.cos(phi), Ty = Qy + len * Math.sin(phi);          // tangent on top wheel
+    let aT = Math.atan2(Ty - Cy, Tx - CX); if (aT < 0) aT += Math.PI * 2;
+    return { px, py, Qx, Qy, Tx, Ty, aT, on: len + RR * aT };
+  }
+  // car travel for a given crank rotation: rope on the ramp side shortens by RS * theta
+  function solveTravel(theta) {
+    const target = on0 - RS * theta;
+    let lo = 0, hi = S0 - S_MIN;
+    for (let i = 0; i < 26; i++) { const m = (lo + hi) / 2; if (ropeGeom(m).on > target) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+
+  function recompute() {
+    const h = S * Math.sin(angle);
+    Cy = h + 1.1;
+    tower.children.slice().forEach(c => tower.remove(c));
+    [-0.42, 0.42].forEach(z => tower.add(toothpick(V(CX, h - 0.5, z), V(CX, Cy + 0.15, z))));
+    tower.add(toothpick(V(CX, Cy, -0.55), V(CX, Cy, 0.55), 0.035));              // axle
+    wheel.position.set(CX, Cy, 0);
+    on0 = ropeGeom(0).on;
+    thetaMax = (on0 - ropeGeom(S0 - S_MIN).on) / RS;
+  }
+
+  function update() {
+    const theta = frac * thetaMax;
+    const t = solveTravel(theta), g = ropeGeom(t);
+    car.position.set(g.px, g.py, 0);
+    car.rotation.z = angle;
+    carWheels.forEach(w => w.rotation.z = -t / CAR_WHEEL);
+    wheel.rotation.z = -(RS * theta) / RR;
+    crank.rotation.z = theta;
+
+    // rope: car hook -> top wheel -> straight down -> wound onto spool
+    const pts = [];
+    for (let i = 0; i < 6; i++) { const k = i / 6; pts.push(V(g.Qx + (g.Tx - g.Qx) * k, g.Qy + (g.Ty - g.Qy) * k, 0)); }
+    for (let i = 0; i <= 18; i++) { const a = g.aT * (1 - i / 18); pts.push(V(CX + RR * Math.cos(a), Cy + RR * Math.sin(a), 0)); }
+    for (let i = 1; i <= 6; i++) pts.push(V(XR, Cy + (YC - Cy) * i / 6, 0));
+    const W = ALPHA0 + theta, n = Math.max(4, Math.ceil(W / 0.2));
+    let end;
+    for (let i = 1; i <= n; i++) {
+      const a = Math.PI + W * i / n, r = RS + (a - Math.PI) / (2 * Math.PI) * 0.07;
+      pts.push(end = V(XC + r * Math.cos(a), YC + r * Math.sin(a), 0));
+    }
+    if (ropeMesh) { ropeMesh.geometry.dispose(); scene.remove(ropeMesh); }
+    ropeMesh = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'centripetal'), Math.min(400, pts.length * 3), 0.035, 6), mRope);
+    ropeMesh.castShadow = true;
+    scene.add(ropeMesh);
+    knot.position.copy(end);
+
+    statEl.innerHTML = 'Ideal mechanical advantage of the slope: <b>' + (1 / Math.sin(angle)).toFixed(2) + '×</b><br>' +
+      'Crank turns: <b>' + (theta / (2 * Math.PI)).toFixed(2) + '</b> &nbsp; Car raised: <b>' + (t * Math.sin(angle)).toFixed(2) + '</b>';
+  }
+
+  // ---------- UI ----------
+  const $ = id => document.getElementById(id);
+  const lockBtn = $('lockBtn'), resetBtn = $('resetBtn'), statEl = $('stat'), hint = $('hint');
+
+  function setLocked(v) {
+    locked = v;
+    controls.enabled = !v;               // camera frozen while locked in
+    if (v) { dragging = false; }
+    lockBtn.setAttribute('aria-pressed', v);
+    lockBtn.textContent = v ? 'Locked in – tap to unlock' : 'Lock in';
+    hint.textContent = v ? 'Camera locked – drag the handle in a circle' : 'Tap Lock in to freeze the camera, then use the crank';
+    dom.style.cursor = 'default';
+  }
+  lockBtn.addEventListener('click', () => setLocked(!locked));
+  resetBtn.addEventListener('click', () => {
+    frac = 0; setLocked(false);
+    buildRamp(); recompute(); defaultCam(); dirty = true;
+  });
+  addEventListener('resize', () => {
+    renderer.setSize(innerWidth, innerHeight);
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+  });
+
+  // ---------- loop ----------
+  function loop() {
+    requestAnimationFrame(loop);
+    if (dirty) { update(); dirty = false; }
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  buildRamp(); recompute(); defaultCam(); update(); loop();
+})();
+</script>
 </body>
 </html>
