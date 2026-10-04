@@ -267,17 +267,24 @@
   const mLamp = M(0xfff2b0, { emissive: 0xffe58a, emissiveIntensity: .6 });
   const mTail = M(0xff3b3b, { emissive: 0xaa0000, emissiveIntensity: .6 });
   const box = (w, h, d, x, y, z, mat) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); car.add(m); return m; };
-  box(1.3, 0.22, 0.8, 0, 0.33, 0, mRed);                 // chassis
-  box(0.42, 0.16, 0.78, 0.44, 0.52, 0, mRed);            // hood
-  box(0.36, 0.3, 0.76, 0.02, 0.59, 0, mRed);             // cab
-  box(0.4, 0.14, 0.78, 0.02, 0.62, 0, mGlass);           // windows
-  box(0.38, 0.03, 0.74, 0.02, 0.745, 0, mRedDark);       // roof
-  box(0.6, 0.04, 0.78, -0.35, 0.46, 0, mDark);           // bed floor
-  [-0.37, 0.37].forEach(z => box(0.6, 0.16, 0.04, -0.35, 0.54, z, mRed));   // bed sides
-  box(0.04, 0.16, 0.74, -0.65, 0.54, 0, mRed);           // tailgate
-  box(0.04, 0.16, 0.74, -0.15, 0.54, 0, mRedDark);       // bed front wall
-  box(0.08, 0.1, 0.82, 0.67, 0.29, 0, mDark);            // front bumper
-  box(0.07, 0.08, 0.82, -0.66, 0.29, 0, mDark);          // rear bumper
+  box(1.3, 0.22, 0.8, 0, 0.33, 0, mRed);                  // chassis
+  box(0.42, 0.16, 0.78, 0.44, 0.52, 0, mRed);             // low hood (front)
+  box(0.85, 0.46, 0.78, -0.225, 0.67, 0, mRed);           // tall van body
+  [[-0.42, 0.26], [0.04, 0.2]].forEach(([x, w]) => box(w, 0.17, 0.8, x, 0.76, 0, mGlass));   // side windows
+  box(0.02, 0.17, 0.66, 0.205, 0.76, 0, mGlass);          // windshield
+  box(0.02, 0.17, 0.66, -0.655, 0.76, 0, mGlass);         // rear window
+  box(0.12, 0.34, 0.805, -0.2, 0.6, 0, mRedDark);         // door panel
+  box(0.87, 0.03, 0.82, -0.225, 0.915, 0, mRedDark);      // roof
+  // roof rail (the cargo rack): corner + intermediate posts, top and mid rails
+  const RX0 = -0.62, RX1 = 0.17, RZ = 0.37, RH = 0.2, RY = 0.93, RL = RX1 - RX0, RC = (RX0 + RX1) / 2;
+  [-1, 1].forEach(sg => {
+    for (let i = 0; i < 5; i++) box(0.022, RH, 0.022, RX0 + RL * i / 4, RY + RH / 2, sg * RZ, mMetal);
+    box(RL + 0.022, 0.026, 0.026, RC, RY + RH, sg * RZ, mMetal);
+    box(RL + 0.022, 0.02, 0.02, RC, RY + RH * 0.5, sg * RZ, mMetal);
+  });
+  [RX0, RX1].forEach(x => box(0.026, 0.026, 2 * RZ, x, RY + RH, 0, mMetal));
+  box(0.08, 0.1, 0.82, 0.67, 0.29, 0, mDark);             // front bumper
+  box(0.07, 0.08, 0.82, -0.66, 0.29, 0, mDark);           // rear bumper
   [-0.27, 0.27].forEach(z => { box(0.03, 0.07, 0.14, 0.655, 0.47, z, mLamp); box(0.03, 0.06, 0.12, -0.655, 0.4, z, mTail); });
   const hook = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 12), mMetal); hook.position.set(0.65, 0.4, 0);
   car.add(hook);
@@ -287,9 +294,9 @@
   });
   car.traverse(o => { if (o.isMesh) o.castShadow = true; });
 
-  // ---------- boxes (loaded into the truck bed) ----------
-  const MAX_BOXES = 5, BS = 0.22, FLOOR = 0.48;
-  const SLOTS = [[-0.52, -0.12, 0], [-0.52, 0.12, 0], [-0.29, -0.12, 0], [-0.29, 0.12, 0], [-0.405, 0, 1]];
+  // ---------- boxes (loaded onto the roof rack) ----------
+  const MAX_BOXES = 5, BS = 0.22, FLOOR = 0.93;      // boxes sit on the roof rack
+  const SLOTS = [[-0.355, -0.13, 0], [-0.355, 0.13, 0], [-0.095, -0.13, 0], [-0.095, 0.13, 0], [-0.225, 0, 1]];
   const boxGeo = new THREE.BoxGeometry(BS, BS, BS), tapeGeo = new THREE.BoxGeometry(0.045, BS + 0.004, BS + 0.004);
   const boxes = [];                    // each: {mesh, x, y, z, off, vel}
   function spawnBox() {
@@ -301,7 +308,7 @@
     car.add(m);
     boxes.push({ mesh: m, x, z, y: FLOOR + BS / 2 + layer * BS, off: 0.9, vel: 0 });
   }
-  function animateBoxes(dt) {          // quick drop-in from above and behind the tailgate
+  function animateBoxes(dt) {          // quick drop-in from above and behind
     boxes.forEach(b => {
       if (b.off > 0 || b.vel !== 0) {
         b.vel -= 14 * dt; b.off += b.vel * dt;
@@ -397,7 +404,7 @@
   addBtn.addEventListener('click', () => {
     if (boxes.length >= MAX_BOXES) return;
     spawnBox();
-    addBtn.textContent = boxes.length >= MAX_BOXES ? 'Truck full · 5/5' : 'Add Object · ' + boxes.length + '/' + MAX_BOXES;
+    addBtn.textContent = boxes.length >= MAX_BOXES ? 'Rack full · 5/5' : 'Add Object · ' + boxes.length + '/' + MAX_BOXES;
     addBtn.disabled = boxes.length >= MAX_BOXES;
     dirty = true;
   });
