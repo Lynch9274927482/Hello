@@ -411,8 +411,9 @@
   // ---------- physics ----------
   // The car (5 kg) pulls back on the crank through the rope. Your hand can only push so hard,
   // so the handle lags behind the pointer; let go and gravity unwinds the rope.
-  const G = 3.0;                       // scaled units: slow, readable motion
-  const I_CRANK = 0.05, W_TERM = 2.2;  // light cardboard crank; free-fall unwinding speed (rad/s)
+  const G = 3.5;                       // scaled gravity: readable motion
+  const I_CRANK = 0.05;                // light cardboard crank
+  const FRIC = 0.04, C_BEARING = 0.02; // rolling resistance (scales with weight) + tiny bearing drag; no speed cap
   const KP = 20, KD = 3.5, TAU_MAX = 1.5, LAG = 1.0;
   // Load as a fraction of the most the hand can pull: empty truck is light, 4 boxes is hard, 5 is nearly impossible.
   const LOAD = [0.30, 0.42, 0.55, 0.69, 0.83, 0.97];
@@ -435,14 +436,14 @@
       const k = gearRatio(theta);
       const Ieff = I_CRANK + massEff * k * k;
       const grav = massEff * G * Math.sin(angle) * k;
-      let tau = -grav - (grav / W_TERM) * omega;
+      let tau = -grav - FRIC * grav * Math.sign(omega) - C_BEARING * omega;
       if (dragging) {
         target = clamp(target, theta - LAG, theta + LAG);
         tau += clamp(KP * (target - theta) - KD * omega, -TAU_MAX, TAU_MAX);
       }
       omega += tau / Ieff * h;
       theta += omega * h;
-      if (theta < 0) { theta = 0; omega = 0; }                       // truck rests at the bottom
+      if (theta < 0) { theta = 0; omega = omega < -0.5 ? -omega * 0.15 : 0; }   // small bump at the bottom
       if (theta > thetaMax) { theta = thetaMax; omega = Math.min(omega, 0); }
     }
   }
