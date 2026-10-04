@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ramp &amp; Crank Pulley</title>
+<title>Ramp &amp; Crank Pulley – Simple Machine Simulation</title>
 <style>
   :root{--ink:#1b2a3a;--muted:#53647a;--accent:#0a56ff;--glass:rgba(255,255,255,.58);--edge:rgba(255,255,255,.75)}
   *{box-sizing:border-box}
@@ -32,6 +32,9 @@
   button:active{transform:scale(.97)}
   button:focus-visible{outline:3px solid rgba(10,86,255,.4);outline-offset:2px}
   #lockBtn{background:var(--accent);color:#fff}
+  #addBtn{background:#ff7a1a;color:#fff}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button{line-height:1.2;padding-left:6px;padding-right:6px}
   #lockBtn[aria-pressed=true]{background:#14a35c}
   .stat{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.45}
   .stat b{color:var(--ink)}
@@ -48,9 +51,10 @@
 <body>
 <div class="panel" role="group" aria-label="Simulation controls">
   <h1>Ramp &amp; crank pulley</h1>
-  <p class="sub">Lock in the camera, then turn the handle counter-clockwise to haul the car up the ramp.</p>
+  <p class="sub">Lock in the camera, then turn the handle counter-clockwise to haul the truck up the ramp. Add boxes to make it heavier.</p>
   <div class="btns">
     <button id="lockBtn" aria-pressed="false">Lock in</button>
+    <button id="addBtn">Add Object · 0/5</button>
   </div>
   <div class="stat" id="stat"></div>
 </div>
@@ -65,6 +69,8 @@
   const CX = -0.1;                    // top wheel x
   const S0 = 6.0, S_MIN = 1.6;        // car start / nearest approach (distance from apex along slope)
   const CAR_WHEEL = 0.2;
+  const CAR_SCALE = 1.12;             // truck is slightly bigger
+  const HX = 0.65 * CAR_SCALE, HY = 0.4 * CAR_SCALE;   // rope hook offset (along slope / above it)
   const DEFAULT_ANGLE = 30;
   // crank winch (fixed near the bottom of the ramp's tall end)
   const RS = 0.4;                     // spool rope radius
@@ -75,7 +81,7 @@
 
   // ---------- state ----------
   let angle = DEFAULT_ANGLE * Math.PI / 180;
-  let theta = 0, omega = 0, target = 0, thetaMax = 1, on0 = 0, Cy = 0, dirty = true, dragging = false, locked = false;
+  let theta = 0, omega = 0, target = 0, thetaMax = 1, on0 = 0, Cy = 0, dirty = true, dragging = false, locked = false, hover = false;
 
   // ---------- renderer / scene ----------
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -123,7 +129,8 @@
       prevA = a;
       target += d;                    // where the hand is trying to take the handle
     } else if (locked && e.pointerType === 'mouse') {
-      dom.style.cursor = overCrank(e) ? 'grab' : 'default';
+      hover = overCrank(e);
+      dom.style.cursor = hover ? 'grab' : 'default';
     }
   });
   const endDrag = () => { dragging = false; dom.style.cursor = 'default'; };
@@ -238,29 +245,71 @@
   [-0.105, 0.105].forEach(z => { const f = cyl(0.62, 0.04, mCard); f.position.z = z; crank.add(f); });
   [-0.13, 0.13].forEach(z => { const f = cyl(0.5, 0.012, mCardLight); f.position.z = z; crank.add(f); });
   const ha = Math.PI * 0.35, hx = 0.5 * Math.cos(ha), hy = 0.5 * Math.sin(ha);
-  const stick = cyl(0.04, HZ - 0.13, mWood); stick.position.set(hx, hy, (HZ + 0.13) / 2);
+  const mStick = mWood.clone(), mKnob = mCardDark.clone();
+  const stick = cyl(0.04, HZ - 0.13, mStick); stick.position.set(hx, hy, (HZ + 0.13) / 2);
   const base = cyl(0.09, 0.05, mCardDark); base.position.set(hx, hy, 0.15);
-  const knob = cyl(0.12, 0.2, mCardDark); knob.position.set(hx, hy, HZ);
+  const knob = cyl(0.12, 0.2, mKnob); knob.position.set(hx, hy, HZ);
   const hit = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 12), new THREE.MeshBasicMaterial({ visible: false }));
   hit.position.set(hx, hy, HZ);
-  crank.add(stick, base, knob, hit);
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.26, 20, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffc933, transparent: true, opacity: 0, depthWrite: false }));
+  halo.position.set(hx, hy, HZ); halo.visible = false;
+  crank.add(stick, base, knob, hit, halo);
   crank.traverse(o => { if (o.isMesh) o.castShadow = true; });
   scene.add(crank);
 
   // ---------- car ----------
   const car = new THREE.Group();
   scene.add(car);
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.32, 0.8), mBlue); body.position.y = 0.38;
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.28, 0.68), mBlue); cabin.position.set(-0.12, 0.68, 0);
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.17, 0.67), mGlass); glass.position.set(-0.12, 0.7, 0);
-  const bumper = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.84), mDark); bumper.position.set(0.66, 0.3, 0);
+  car.scale.setScalar(CAR_SCALE);
+  const mRed = M(0xd62828, { roughness: .3, metalness: .25 });
+  const mRedDark = M(0xa81c1c, { roughness: .4, metalness: .2 });
+  const mLamp = M(0xfff2b0, { emissive: 0xffe58a, emissiveIntensity: .6 });
+  const mTail = M(0xff3b3b, { emissive: 0xaa0000, emissiveIntensity: .6 });
+  const box = (w, h, d, x, y, z, mat) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); car.add(m); return m; };
+  box(1.3, 0.22, 0.8, 0, 0.33, 0, mRed);                 // chassis
+  box(0.42, 0.16, 0.78, 0.44, 0.52, 0, mRed);            // hood
+  box(0.36, 0.3, 0.76, 0.02, 0.59, 0, mRed);             // cab
+  box(0.4, 0.14, 0.78, 0.02, 0.62, 0, mGlass);           // windows
+  box(0.38, 0.03, 0.74, 0.02, 0.745, 0, mRedDark);       // roof
+  box(0.6, 0.04, 0.78, -0.35, 0.46, 0, mDark);           // bed floor
+  [-0.37, 0.37].forEach(z => box(0.6, 0.16, 0.04, -0.35, 0.54, z, mRed));   // bed sides
+  box(0.04, 0.16, 0.74, -0.65, 0.54, 0, mRed);           // tailgate
+  box(0.04, 0.16, 0.74, -0.15, 0.54, 0, mRedDark);       // bed front wall
+  box(0.08, 0.1, 0.82, 0.67, 0.29, 0, mDark);            // front bumper
+  box(0.07, 0.08, 0.82, -0.66, 0.29, 0, mDark);          // rear bumper
+  [-0.27, 0.27].forEach(z => { box(0.03, 0.07, 0.14, 0.655, 0.47, z, mLamp); box(0.03, 0.06, 0.12, -0.655, 0.4, z, mTail); });
   const hook = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 12), mMetal); hook.position.set(0.65, 0.4, 0);
-  car.add(body, cabin, glass, bumper, hook);
+  car.add(hook);
   const carWheels = [[-0.4, -0.43], [-0.4, 0.43], [0.4, -0.43], [0.4, 0.43]].map(([x, z]) => {
     const w = cyl(CAR_WHEEL, 0.14, mDark); w.position.set(x, CAR_WHEEL, z);
     const cap = cyl(0.08, 0.16, mMetal); w.add(cap); car.add(w); return w;
   });
   car.traverse(o => { if (o.isMesh) o.castShadow = true; });
+
+  // ---------- boxes (loaded into the truck bed) ----------
+  const MAX_BOXES = 5, BS = 0.22, FLOOR = 0.48;
+  const SLOTS = [[-0.52, -0.12, 0], [-0.52, 0.12, 0], [-0.29, -0.12, 0], [-0.29, 0.12, 0], [-0.405, 0, 1]];
+  const boxGeo = new THREE.BoxGeometry(BS, BS, BS), tapeGeo = new THREE.BoxGeometry(0.045, BS + 0.004, BS + 0.004);
+  const boxes = [];                    // each: {mesh, x, y, z, off, vel}
+  function spawnBox() {
+    const [x, z, layer] = SLOTS[boxes.length];
+    const m = new THREE.Mesh(boxGeo, mCard);
+    m.add(new THREE.Mesh(tapeGeo, mCardLight));
+    m.castShadow = true;
+    m.rotation.y = (Math.random() - .5) * 0.12;
+    car.add(m);
+    boxes.push({ mesh: m, x, z, y: FLOOR + BS / 2 + layer * BS, off: 0.9, vel: 0 });
+  }
+  function animateBoxes(dt) {          // quick drop-in from above and behind the tailgate
+    boxes.forEach(b => {
+      if (b.off > 0 || b.vel !== 0) {
+        b.vel -= 14 * dt; b.off += b.vel * dt;
+        if (b.off <= 0) { b.off = 0; b.vel = Math.abs(b.vel) > 1 ? -b.vel * 0.2 : 0; }
+      }
+      b.mesh.position.set(b.x - 0.4 * (b.off / 0.9), b.y + b.off, b.z);
+    });
+  }
 
   // ---------- rope ----------
   let ropeMesh = null;
@@ -272,7 +321,7 @@
     const s = S0 - t, h = S * Math.sin(angle);
     const ux = Math.cos(angle), uy = Math.sin(angle), nx = -uy, ny = ux;
     const px = -s * ux, py = h - s * uy;
-    const Qx = px + 0.65 * ux + 0.4 * nx, Qy = py + 0.65 * uy + 0.4 * ny;       // car hook
+    const Qx = px + HX * ux + HY * nx, Qy = py + HX * uy + HY * ny;       // car hook
     const dx = CX - Qx, dy = Cy - Qy, L = Math.hypot(dx, dy);
     const phi = Math.atan2(dy, dx) + Math.asin(Math.min(RR / L, 1));
     const len = Math.sqrt(Math.max(L * L - RR * RR, 0));
@@ -297,13 +346,14 @@
     wheel.position.set(CX, Cy, 0);
     on0 = ropeGeom(0).on;
     thetaMax = (on0 - ropeGeom(S0 - S_MIN).on) / RS;
+    calibrate();
   }
 
   function update() {
     const t = solveTravel(theta), g = ropeGeom(t);
     car.position.set(g.px, g.py, 0);
     car.rotation.z = angle;
-    carWheels.forEach(w => w.rotation.z = -t / CAR_WHEEL);
+    carWheels.forEach(w => w.rotation.z = -t / (CAR_WHEEL * CAR_SCALE));
     wheel.rotation.z = -(RS * theta) / RR;
     crank.rotation.z = theta;
 
@@ -324,23 +374,33 @@
     scene.add(ropeMesh);
     knot.position.copy(end);
 
-    statEl.innerHTML = 'Car weight: <b>5 kg</b> &nbsp; Rope tension at rest: <b>' + (5 * 9.81 * Math.sin(angle)).toFixed(1) + ' N</b><br>' +
-      'Crank turns: <b>' + (theta / (2 * Math.PI)).toFixed(2) + '</b> &nbsp; Car raised: <b>' + (t * Math.sin(angle)).toFixed(2) + '</b>';
+    const kg = LOAD[boxes.length] * 20;
+    statEl.innerHTML = 'Load: <b>' + boxes.length + ' box' + (boxes.length === 1 ? '' : 'es') + '</b> &nbsp; Weight: <b>' + kg.toFixed(1) +
+      ' kg</b><br>Rope tension at rest: <b>' + (kg * 9.81 * Math.sin(angle)).toFixed(1) + ' N</b> &nbsp; Crank turns: <b>' +
+      (theta / (2 * Math.PI)).toFixed(2) + '</b>';
   }
 
   // ---------- UI ----------
   const $ = id => document.getElementById(id);
-  const lockBtn = $('lockBtn'), statEl = $('stat');
+  const lockBtn = $('lockBtn'), addBtn = $('addBtn'), statEl = $('stat');
 
   function setLocked(v) {
     locked = v;
     controls.enabled = !v;               // camera frozen while locked in
     if (v) dragging = false;
+    hover = false;
     lockBtn.setAttribute('aria-pressed', v);
     lockBtn.textContent = v ? 'Locked in – tap to unlock' : 'Lock in';
     dom.style.cursor = 'default';
   }
   lockBtn.addEventListener('click', () => setLocked(!locked));
+  addBtn.addEventListener('click', () => {
+    if (boxes.length >= MAX_BOXES) return;
+    spawnBox();
+    addBtn.textContent = boxes.length >= MAX_BOXES ? 'Truck full · 5/5' : 'Add Object · ' + boxes.length + '/' + MAX_BOXES;
+    addBtn.disabled = boxes.length >= MAX_BOXES;
+    dirty = true;
+  });
   addEventListener('resize', () => {
     renderer.setSize(innerWidth, innerHeight);
     camera.aspect = innerWidth / innerHeight;
@@ -351,36 +411,57 @@
   // ---------- physics ----------
   // The car (5 kg) pulls back on the crank through the rope. Your hand can only push so hard,
   // so the handle lags behind the pointer; let go and gravity unwinds the rope.
-  const M_CAR = 1, G = 3.0;            // scaled units: slow, readable motion
-  const I_CRANK = 0.05, C_VISC = 0.3;  // light cardboard crank, a little friction
+  const G = 3.0;                       // scaled units: slow, readable motion
+  const I_CRANK = 0.05, W_TERM = 2.2;  // light cardboard crank; free-fall unwinding speed (rad/s)
   const KP = 20, KD = 3.5, TAU_MAX = 1.5, LAG = 1.0;
+  // Load as a fraction of the most the hand can pull: empty truck is light, 4 boxes is hard, 5 is nearly impossible.
+  const LOAD = [0.30, 0.42, 0.55, 0.69, 0.83, 0.97];
+  let massUnit = 1, massEff = 0.3;
   const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
   function gearRatio(th) {             // car travel per radian of crank rotation
     const a = Math.max(th - 0.01, 0), b = Math.min(th + 0.01, thetaMax);
     return (solveTravel(b) - solveTravel(a)) / (b - a);
   }
+  function calibrate() {               // mass that needs exactly TAU_MAX at the steepest part of the pull
+    let kmax = 0;
+    for (let i = 0; i <= 20; i++) kmax = Math.max(kmax, gearRatio(thetaMax * i / 20));
+    massUnit = TAU_MAX / (G * Math.sin(angle) * kmax);
+    massEff = LOAD[boxes.length] * massUnit;
+  }
   function step(dt) {
+    massEff += (LOAD[boxes.length] * massUnit - massEff) * Math.min(1, dt * 6);   // eases in when a box lands
     const n = 4, h = dt / n;
     for (let i = 0; i < n; i++) {
       const k = gearRatio(theta);
-      const Ieff = I_CRANK + M_CAR * k * k;
-      let tau = -M_CAR * G * Math.sin(angle) * k - C_VISC * omega;
+      const Ieff = I_CRANK + massEff * k * k;
+      const grav = massEff * G * Math.sin(angle) * k;
+      let tau = -grav - (grav / W_TERM) * omega;
       if (dragging) {
         target = clamp(target, theta - LAG, theta + LAG);
         tau += clamp(KP * (target - theta) - KD * omega, -TAU_MAX, TAU_MAX);
       }
       omega += tau / Ieff * h;
       theta += omega * h;
-      if (theta < 0) { theta = 0; omega = 0; }                       // car rests at the bottom
+      if (theta < 0) { theta = 0; omega = 0; }                       // truck rests at the bottom
       if (theta > thetaMax) { theta = thetaMax; omega = Math.min(omega, 0); }
     }
   }
 
   const clock = new THREE.Clock();
+  const hot = new THREE.Color(0xff9d00);
+  function highlightHandle(time) {     // bright glow while turning, soft glow on hover
+    const lvl = dragging ? 1 : (hover ? 0.35 : 0);
+    [mKnob, mStick].forEach(m => { m.emissive.copy(hot); m.emissiveIntensity = lvl * 0.9; });
+    halo.visible = lvl > 0;
+    halo.material.opacity = lvl * 0.45;
+    halo.scale.setScalar(1 + (dragging ? 0.15 * Math.sin(time * 9) : 0));
+  }
   function loop() {
     requestAnimationFrame(loop);
+    highlightHandle(performance.now() / 1000);
     const before = theta;
-    step(Math.min(clock.getDelta(), 0.05));
+    const dt = Math.min(clock.getDelta(), 0.05);
+    step(dt); animateBoxes(dt);
     if (theta !== before || dirty) { update(); dirty = false; }
     controls.update();
     renderer.render(scene, camera);
