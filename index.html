@@ -3,13 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ramp &amp; Crank Pulley</title>
+<title>Ramp &amp; Crank Pulley – Simple Machine Simulation</title>
 <style>
   :root{--ink:#1b2a3a;--muted:#53647a;--accent:#0a56ff;--glass:rgba(255,255,255,.58);--edge:rgba(255,255,255,.75)}
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;overflow:hidden;background:#dfe8f5;
     font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;color:var(--ink)}
   canvas{display:block;touch-action:none;outline:none}
+  #easter{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0b1220;
+    opacity:0;pointer-events:none;transition:opacity .5s ease;z-index:5;color:#fff;text-align:center;padding:24px;font-weight:600}
+  #easter.show{opacity:1}
+  #easter img{max-width:100%;max-height:100%;object-fit:contain}
+  .panel{z-index:10}
   .panel{background:var(--glass);border:1px solid var(--edge);
     -webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);
     box-shadow:0 12px 40px rgba(30,60,110,.18)}
@@ -49,6 +54,7 @@
 </style>
 </head>
 <body>
+<div id="easter" aria-hidden="true"><img src="easter.png" alt="Easter egg" onerror="this.replaceWith(document.createTextNode('You found the easter egg! Put easter.png in the same folder as this HTML file.'))"></div>
 <div class="panel" role="group" aria-label="Simulation controls">
   <h1>Ramp &amp; crank pulley</h1>
   <p class="sub">Lock in the camera, then turn the handle counter-clockwise to haul the truck up the ramp. Add boxes to make it heavier.</p>
@@ -464,8 +470,23 @@
     halo.material.opacity = lvl * 0.45;
     halo.scale.setScalar(1 + (dragging ? 0.15 * Math.sin(time * 9) : 0));
   }
+  // ---------- easter egg: camera inside the ramp ----------
+  const easterEl = document.getElementById('easter');
+  function insideRamp(p, m) {
+    const b = S * Math.cos(angle), h = S * Math.sin(angle);
+    if (Math.abs(p.z) > WD / 2 - m || p.y < m || p.x > -m || p.x < -b + m) return false;
+    return p.y < h * (p.x + b) / b - m;
+  }
+  let camInRamp = false;
+  function easterCheck() {
+    camInRamp = insideRamp(camera.position, 0.02);
+    // zoom may pass into the ramp only when you're aiming at it; elsewhere the 3-unit limit stays
+    controls.minDistance = (camInRamp || insideRamp(controls.target, 0)) ? 0.15 : 3;
+    easterEl.classList.toggle('show', camInRamp);
+  }
   function loop() {
     requestAnimationFrame(loop);
+    easterCheck();
     highlightHandle(performance.now() / 1000);
     const before = theta;
     const dt = Math.min(clock.getDelta(), 0.05);
