@@ -3,13 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ramp &amp; Crank Pulley</title>
+<title>Ramp &amp; Crank Pulley – Simple Machine Simulation</title>
 <style>
   :root{--ink:#1b2a3a;--muted:#53647a;--accent:#0a56ff;--glass:rgba(255,255,255,.58);--edge:rgba(255,255,255,.75)}
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%;overflow:hidden;background:#dfe8f5;
+  html,body{margin:0;height:100%;overflow:hidden;background:linear-gradient(#d9cfc0,#a89880);
     font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;color:var(--ink)}
-  canvas{display:block;touch-action:none;outline:none}
+  canvas{display:block;touch-action:none;outline:none;position:fixed;inset:0;z-index:1}
+  #bg{position:fixed;inset:0;width:100%;height:100%;border:0;z-index:0;pointer-events:none}
+  .panel{z-index:10}
   .panel{background:var(--glass);border:1px solid var(--edge);
     -webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);
     box-shadow:0 12px 40px rgba(30,60,110,.18)}
@@ -49,6 +51,7 @@
 </style>
 </head>
 <body>
+<iframe id="bg" src="background.html" title="" aria-hidden="true" tabindex="-1"></iframe>
 <div class="panel" role="group" aria-label="Simulation controls">
   <h1>Ramp &amp; crank pulley</h1>
   <p class="sub">Lock in the camera, then turn the handle counter-clockwise to haul the truck up the ramp. Add boxes to make it heavier.</p>
@@ -84,7 +87,8 @@
   let theta = 0, omega = 0, target = 0, thetaMax = 1, on0 = 0, Cy = 0, dirty = true, dragging = false, locked = false, hover = false;
 
   // ---------- renderer / scene ----------
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+  renderer.setClearColor(0x000000, 0);     // room background shows through
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
@@ -92,10 +96,7 @@
   const dom = renderer.domElement;
   document.body.prepend(dom);
 
-  const BG = 0xdfe8f5;
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(BG);
-  scene.fog = new THREE.Fog(BG, 28, 80);
 
   const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 200);
   const TARGET = new THREE.Vector3(-1.2, 2.0, 0.2);
@@ -150,6 +151,19 @@
     controls.update();
   }
 
+  // ---------- 360° room background lives in background.html (iframe behind the canvas) ----------
+  const bgFrame = document.getElementById('bg');
+  function sendCam() {
+    if (!bgFrame.contentWindow) return;
+    camera.updateMatrixWorld();
+    bgFrame.contentWindow.postMessage({ type: 'cam', pos: camera.position.toArray(), quat: camera.quaternion.toArray(),
+      fov: camera.fov, viewH: innerHeight }, '*');
+  }
+  controls.addEventListener('change', sendCam);
+  bgFrame.addEventListener('load', sendCam);
+  addEventListener('resize', sendCam);
+  addEventListener('message', e => { if (e.data && e.data.type === 'bg-ready') sendCam(); });
+
   // lights
   scene.add(new THREE.HemisphereLight(0xffffff, 0xaab8cc, 0.7));
   const sun = new THREE.DirectionalLight(0xffffff, 0.9);
@@ -160,15 +174,6 @@
   sun.shadow.bias = -0.0005;
   scene.add(sun);
 
-  // ground + grid (fades into fog)
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(200, 64).rotateX(-Math.PI / 2),
-    new THREE.MeshStandardMaterial({ color: 0xeef2f8, roughness: 1 }));
-  ground.receiveShadow = true;
-  scene.add(ground);
-  const grid = new THREE.GridHelper(200, 200, 0x9aa8bd, 0xc3cddc);
-  grid.position.y = 0.002;
-  grid.material.transparent = true; grid.material.opacity = 0.7;
-  scene.add(grid);
 
   // ---------- materials ----------
   const M = (color, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: .55, metalness: .05 }, o));
@@ -197,6 +202,30 @@
   }
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   const cyl = (r, len, mat) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 36).rotateX(Math.PI / 2), mat);
+
+  // ---------- brown table ----------
+  function woodTex() {
+    const c = document.createElement('canvas'); c.width = c.height = 512;
+    const g = c.getContext('2d');
+    g.fillStyle = '#8a5a33'; g.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 160; i++) {
+      g.strokeStyle = 'rgba(' + (40 + Math.random() * 40 | 0) + ',' + (20 + Math.random() * 25 | 0) + ',10,' + (.05 + Math.random() * .12) + ')';
+      g.lineWidth = 1 + Math.random() * 3;
+      const y = Math.random() * 512; g.beginPath(); g.moveTo(0, y);
+      g.bezierCurveTo(170, y + (Math.random() - .5) * 14, 340, y + (Math.random() - .5) * 14, 512, y); g.stroke();
+    }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 2); t.anisotropy = 4;
+    return t;
+  }
+  const mTable = new THREE.MeshStandardMaterial({ map: woodTex(), roughness: .6, metalness: 0 });
+  const mTableDark = M(0x5e3a1f, { roughness: .7 });
+  const tableBox = (w, h, d, x, y, z, mat) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z); m.receiveShadow = true; scene.add(m); return m;
+  };
+  tableBox(14.5, 0.5, 8.5, -2.3, -0.25, 0, mTable);          // top (surface at y = 0)
+  tableBox(13.8, 0.7, 7.8, -2.3, -0.85, 0, mTableDark);      // apron
+  [-1, 1].forEach(sx => [-1, 1].forEach(sz => tableBox(0.7, 8.3, 0.7, -2.3 + sx * 6.6, -4.65, sz * 3.6, mTableDark)));  // legs to the room floor
 
   // ---------- ramp (rebuilt on angle change) ----------
   const rampGroup = new THREE.Group();
