@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Room background (360°)</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#cdbfa9}
+  /* Oversized so the blur never fades at the screen edges. Open this file alone with ?blur=0 to inspect the room. */
+  canvas{position:fixed;left:-4%;top:-4%;width:108%;height:108%;filter:blur(9px)}
+</style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  // Room in the SAME world units as the machine: table top is y = 0, 1 unit ≈ 8.5 cm.
+  const RX0 = -30, RX1 = 26, RZ0 = -32, RZ1 = 32, FY = -8.8, CY = 26;
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1) * 0.75);   // blurred anyway: cheap to draw
+  document.body.appendChild(renderer.domElement);
+  const blur = new URLSearchParams(location.search).get('blur');
+  if (blur !== null) renderer.domElement.style.filter = `blur(${+blur}px)`;
+
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(45, 1, 0.1, 300);
+  let W = 1, H = 1, dirty = true;
+  function resize() {
+    W = innerWidth * 1.08; H = innerHeight * 1.08;
+    renderer.setSize(W, H, false);
+    cam.aspect = W / H; cam.updateProjectionMatrix(); dirty = true;
+  }
+  addEventListener('resize', resize); resize();
+
+  // ---------- helpers ----------
+  const mat = (c, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .85, metalness: 0 }, o));
+  const box = (w, h, d, x, y, z, c, o) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), c.isMaterial ? c : mat(c, o));
+    m.position.set(x, y, z); scene.add(m); return m;
+  };
+  const cyl = (rt, rb, h, x, y, z, c, o) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 20), mat(c, o));
+    m.position.set(x, y, z); scene.add(m); return m;
+  };
+  const glow = c => new THREE.MeshBasicMaterial({ color: c });
+  function tex(draw, rx, ry) {
+    const c = document.createElement('canvas'); c.width = c.height = 512;
+    draw(c.getContext('2d'));
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); return t;
+  }
+
+  // ---------- room shell (+x, -x, ceiling, floor, +z, -z) ----------
+  const floorTex = tex(g => {
+    for (let i = 0; i < 8; i++) {
+      g.fillStyle = `hsl(30,${35 + rnd() * 10}%,${40 + rnd() * 10}%)`; g.fillRect(0, i * 64, 512, 64);
+      g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(0, i * 64, 512, 2); g.fillRect(rnd() * 512, i * 64, 2, 64);
+    }
+  }, 4, 4);
+  const back = { side: THREE.BackSide };
+  const walls = [mat(0xece4d6, back), mat(0xece4d6, back), mat(0xfaf7f1, back),
+                 new THREE.MeshStandardMaterial({ map: floorTex, roughness: .6, side: THREE.BackSide }),
+                 mat(0xece4d6, back), mat(0xa9bba8, back)];
+  const room = new THREE.Mesh(new THREE.BoxGeometry(RX1 - RX0, CY - FY, RZ1 - RZ0), walls);
+  room.position.set((RX0 + RX1) / 2, (FY + CY) / 2, 0); scene.add(room);
+  box(RX1 - RX0, 1, 0.4, (RX0 + RX1) / 2, FY + 0.5, RZ0 + 0.2, 0xf6f2ea);     // baseboards
+  box(RX1 - RX0, 1, 0.4, (RX0 + RX1) / 2, FY + 0.5, RZ1 - 0.2, 0xf6f2ea);
+  box(0.4, 1, RZ1 - RZ0, RX0 + 0.2, FY + 0.5, 0, 0xf6f2ea);
+  box(0.4, 1, RZ1 - RZ0, RX1 - 0.2, FY + 0.5, 0, 0xf6f2ea);
+
+  // rug under the table
+  box(30, 0.1, 22, -2, FY + 0.05, 0, 0x8c6a5a);
+  box(27, 0.12, 19, -2, FY + 0.06, 0, 0xb59582);
+
+  // ---------- window (back wall) ----------
+  box(16, 14, 0.2, -6, 5, RZ0 + 0.15, glow(0xe3f3ff));
+  [[16.6, .7, -6, 12.35], [16.6, .7, -6, -2.35], [.7, 14.6, -14.15, 5], [.7, 14.6, 2.15, 5], [.4, 14, -6, 5]]
+    .forEach(([w, h, x, y]) => box(w, h, 0.5, x, y, RZ0 + 0.3, 0xffffff));
+  box(16, .4, 0.5, -6, 5, RZ0 + 0.3, 0xffffff);
+  box(3.2, 19, 0.9, -16.8, 4, RZ0 + 0.6, 0xd2ad8f); box(3.2, 19, 0.9, 4.8, 4, RZ0 + 0.6, 0xd2ad8f);
+  box(26, 0.5, 0.5, -6, 14, RZ0 + 0.6, 0x6b5a4a);
+
+  // ---------- bookshelf (back wall) ----------
+  const wood = mat(0x8a6240);
+  box(14, 22.6, 0.4, 14, FY + 11.3, RZ0 + 0.2, wood);
+  [7, 21].forEach(x => box(0.5, 22.6, 3.5, x, FY + 11.3, RZ0 + 1.75, wood));
+  for (let i = 0; i <= 5; i++) box(14, 0.4, 3.5, 14, FY + 0.2 + i * 4.4, RZ0 + 1.75, wood);
+  const bookMats = [0xb5483a, 0x3d6b8c, 0xd9b44a, 0x4f7a52, 0x7a4a8c, 0xe8e0d0, 0x2f3b4a, 0xc97a3a].map(c => mat(c));
+  const unit = new THREE.BoxGeometry(1, 1, 1);
+  for (let lv = 0; lv < 5; lv++) {
+    let x = 7.4; const y0 = FY + 0.4 + lv * 4.4 + 0.2;
+    while (x < 20.4) {
+      const w = 0.4 + rnd() * 0.5, h = 2.4 + rnd() * 1.3;
+      const m = new THREE.Mesh(unit, bookMats[rnd() * 8 | 0]);
+      m.scale.set(w, h, 2.6); m.position.set(x + w / 2, y0 + h / 2, RZ0 + 1.9); scene.add(m); x += w + 0.03;
+    }
+  }
+
+  // ---------- sofa + side table + floor lamp (left wall) ----------
+  const fabric = mat(0x667f92), fabric2 = mat(0x7b95a8);
+  box(10.6, 5.3, 23.5, -24.4, FY + 2.65, 0, fabric);
+  box(2.6, 6, 23.5, -28.5, FY + 8, 0, fabric);
+  [-1, 1].forEach(s => box(10.6, 3, 2.6, -24.4, FY + 6.8, s * 10.4, fabric));
+  [-1, 1].forEach(s => box(8, 1.3, 9, -23.6, FY + 5.9, s * 4.8, fabric2));
+  [-1, 1].forEach(s => box(1.4, 5, 8.5, -27.2, FY + 8.5, s * 4.8, fabric2));
+  box(5, 6, 5, -27, FY + 3, 16, 0x8a6240);
+  cyl(0.25, 0.25, 3, -27, FY + 7.5, 16, 0x444444); cyl(1.8, 2.6, 3.4, -27, FY + 10.5, 16, 0xffe2a8, { emissive: 0xffd68a, emissiveIntensity: .8 });
+  cyl(0.2, 0.2, 17, -28, FY + 8.5, -20, 0x3a3a3a); cyl(2, 3, 4, -28, FY + 19, -20, 0xffe2a8, { emissive: 0xffd68a, emissiveIntensity: .8 });
+  [[-1, 0xd9a35b], [1, 0x5f8a73]].forEach(([s, c]) => { box(0.3, 7, 5.5, RX0 + 0.3, FY + 20, s * 8, 0x2b2b2b); box(0.15, 6.2, 4.7, RX0 + 0.45, FY + 20, s * 8, c); });
+
+  // ---------- TV console (right wall) ----------
+  box(3.5, 5, 18, 24, FY + 2.5, 0, wood);
+  box(0.8, 9.5, 17, 25.3, FY + 9.8, 0, 0x14171c, { roughness: .25, metalness: .3 });
+  [[-8, 0xc96f4a], [0, 0xe0c068], [8, 0x4f7f8c]].forEach(([z, c]) => { box(0.3, 6, 5, RX1 - 0.3, FY + 22, z, 0x2b2b2b); box(0.15, 5.2, 4.2, RX1 - 0.45, FY + 22, z, c); });
+
+  // ---------- door (front wall), armchair, plant ----------
+  box(10.6, 22.6, 0.3, -12, FY + 11.3, RZ1 - 0.15, 0xf6f2ea);
+  box(9.4, 21.8, 0.5, -12, FY + 10.9, RZ1 - 0.35, 0x8b6b4a);
+  cyl(0.45, 0.45, 0.4, -9, FY + 10.5, RZ1 - 0.8, 0xc9b27a);
+  const chair = new THREE.Group();
+  chair.position.set(12, FY, 22); chair.rotation.y = -2.14; scene.add(chair);
+  [[6.4, 3.6, 6.4, 0, 3.4, 0], [6.4, 6.5, 1.6, 0, 6.2, -2.4], [1.6, 2.6, 6.4, -2.4, 5.4, 0], [1.6, 2.6, 6.4, 2.4, 5.4, 0]].forEach(([w, h, d, x, y, z]) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(0xd4a23c)); m.position.set(x, y, z); chair.add(m);
+  });
+  cyl(2.1, 1.6, 3.6, 22, FY + 1.8, -27.5, 0xb85c38);
+  for (let i = 0; i < 9; i++) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(1.6 + rnd(), 10, 8), mat(0x4a7d3e));
+    m.position.set(22 + (rnd() - .5) * 3.4, FY + 5.5 + rnd() * 5, -27.5 + (rnd() - .5) * 3.4); scene.add(m);
+  }
+
+  // ---------- ceiling light + lighting ----------
+  cyl(4, 4, 0.6, -2, CY - 0.3, 0, glow(0xfff4e0));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xc4a982, 0.95));
+  const pt = new THREE.PointLight(0xfff0d8, 0.75, 160, 1); pt.position.set(-2, CY - 3, 0); scene.add(pt);
+  const sun = new THREE.DirectionalLight(0xfff1d6, 0.6); sun.position.set(-6, 10, RZ0 - 8); scene.add(sun);
+
+  // ---------- camera sync: the machine page sends its camera; we mirror it from inside the room ----------
+  const lo = new THREE.Vector3(RX0 + 2, FY + 2, RZ0 + 2), hi = new THREE.Vector3(RX1 - 2, CY - 2, RZ1 - 2);
+  addEventListener('message', e => {
+    const d = e.data; if (!d || d.type !== 'cam') return;
+    cam.position.fromArray(d.pos).clamp(lo, hi);
+    cam.quaternion.fromArray(d.quat);
+    cam.fov = 2 * Math.atan(Math.tan(d.fov * Math.PI / 360) * (H / d.viewH)) * 180 / Math.PI;   // match the oversized canvas
+    cam.updateProjectionMatrix(); dirty = true;
+  });
+  if (window.parent !== window) window.parent.postMessage({ type: 'bg-ready' }, '*');
+
+  (function tick(t) {
+    requestAnimationFrame(tick);
+    if (window.parent === window) {      // opened on its own: slow 360° preview
+      cam.rotation.order = 'YXZ'; cam.position.set(-2, 2, 0); cam.rotation.set(-0.05, (t || 0) / 9000, 0);
+      cam.fov = 70; cam.updateProjectionMatrix(); dirty = true;
+    }
+    if (dirty) { dirty = false; renderer.render(scene, cam); }
+  })();
+})();
+</script>
+</body>
+</html>
